@@ -1,0 +1,13 @@
+# this is a template for splunk searches
+# you can use this template to create a new splunk search
+
+index=bluecoat {time_spec} content_filter_denied |
+    eval ipv4_conversation = src_ip + "_" + dst_ip |
+    | fillnull value=-
+        src_ip 
+        dst_ip 
+    | table 
+        _time 
+        ipv4_conversation
+        src_ip 
+        dst_ip 

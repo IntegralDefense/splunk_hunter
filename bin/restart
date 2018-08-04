@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+cd /opt/splunk_detection || { echo "cannot cd to $SPLUNK_DETECTION"; exit 1; }
+python3 bin/splunk_detection.py -k || exit 1
+python3 bin/splunk_detection.py -d --background -r $(ls -d rules.* | grep -v rules.legacy)
