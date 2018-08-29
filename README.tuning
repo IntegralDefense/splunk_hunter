@@ -1,18 +1,15 @@
 TUNING HOWTO
 
-#1 move into the rules directory
-cd ~/splunk_detection/rules
-
-#2 make sure you are up to date
-git pull
+#1 make sure you are up to date
+git --git-dir=rules/.git pull
 
 #3 find and edit the search file and make your changes
-vim the_hunt_to_tune.search 
+vim rules/the_hunt_to_tune.search 
 #4 test your changes (example below)
-cd ~/splunk_detection && bin/splunk_detection --earliest=-60m the_hunt_to_tune
+./splunk_hunter.py --earliest=-60m the_hunt_to_tune
 
 #5 move back into the rules directory and commit your changes to your local repo
-cd ~/splunk_detection/rules
+cd rules
 git add the_hunt_to_tune.search
 git commit -m 'tuned something out of the hunt'
 git push origin production

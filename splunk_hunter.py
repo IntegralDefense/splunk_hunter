@@ -23,7 +23,7 @@ class CaseConfigParser(ConfigParser):
         return optionstr
 
 # global variables
-BASE_DIR = '/opt/splunk_detection'
+BASE_DIR = None
 RULES_DIR = [ ]
 CONFIG = None
 
@@ -469,10 +469,10 @@ class SplunkSearch(object):
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description="Splunk Detection")
+    parser = argparse.ArgumentParser(description="Splunk Hunter")
     parser.add_argument('-b', '--base-directory', required=False, default=None, dest='base_dir',
         help="Path to the base directory of the Splunk Detection tool. "
-        "Defaults to /opt/splunk_detection. "
+        "Defaults to current working directory. "
         "Override with SPLUNK_DETECTION environment variable.")
     parser.add_argument('-c', '--config', required=False, default='etc/splunk_detection.ini', dest='config_path',
         help="Path to configuration file.  Defaults to etc/splunk_detection.ini")
@@ -505,6 +505,8 @@ if __name__ == '__main__':
         BASE_DIR = os.environ['SPLUNK_DETECTION']
     if args.base_dir:
         BASE_DIR = args.base_dir
+    if not BASE_DIR:
+        BASE_DIR = os.getcwd()
 
     try:
         os.chdir(BASE_DIR)
