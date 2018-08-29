@@ -107,3 +107,5 @@ rules/
 rules.*/
 etc/logging.ini
 etc/config.ini
+logs/
+rules

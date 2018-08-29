@@ -474,8 +474,8 @@ if __name__ == '__main__':
         help="Path to the base directory of the Splunk Detection tool. "
         "Defaults to current working directory. "
         "Override with SPLUNK_DETECTION environment variable.")
-    parser.add_argument('-c', '--config', required=False, default='etc/splunk_detection.ini', dest='config_path',
-        help="Path to configuration file.  Defaults to etc/splunk_detection.ini")
+    parser.add_argument('-c', '--config', required=False, default='etc/config.ini', dest='config_path',
+        help="Path to configuration file.  Defaults to etc/config.ini")
     parser.add_argument('--logging-config', required=False, default='etc/logging.ini', dest='logging_config',
         help="Path to logging configuration file.  Defaults to etc/logging.ini")
     parser.add_argument('-r', '--rules-dir', required=False, dest='rules_dir', action='append', default=[],
@@ -534,7 +534,7 @@ if __name__ == '__main__':
     # load lib/ onto the python path
     sys.path.append('lib')
 
-    from saq.client import Alert
+    from ace_client_lib.client import Alert
     import splunklib
 
     if args.kill:
