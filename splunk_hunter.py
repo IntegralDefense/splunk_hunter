@@ -16,6 +16,14 @@ import threading
 import time
 import traceback
 
+# TODO pip3 install ace_client_lib
+from ace_client_lib.client import Alert
+
+# pip3 install splunklib
+import splunklib
+
+# pip3 install pytz
+import pytz
 
 # custom ConfigParser to keep case sensitivity
 class CaseConfigParser(ConfigParser):
@@ -29,8 +37,12 @@ CONFIG = None
 
 # set to True if running in daemon (scheduled) mode
 DAEMON_MODE = False
+
 # the amount of time we adjust for when running in daemon mode
 GLOBAL_TIME_OFFSET = None
+
+# the timezone we convert to when we specify time ranges
+TIMEZONE = None
 
 # utility functions
 
@@ -287,6 +299,10 @@ class SplunkSearch(object):
                 if GLOBAL_TIME_OFFSET is not None:
                     logging.debug("adjusting timespec by {0}".format(GLOBAL_TIME_OFFSET))
                     earliest = earliest - GLOBAL_TIME_OFFSET
+                if TIMEZONE:
+                    target_earliest = earliest.astimezone(TIMEZONE)
+                    logging.debug(f"converted {earliest} to {target_earliest}")
+                    earliest = target_earliest
                 earliest = earliest.strftime('%m/%d/%Y:%H:%M:%S')
                 logging.debug("using earliest from last execution time {0}".format(earliest))
 
@@ -298,6 +314,10 @@ class SplunkSearch(object):
                 if GLOBAL_TIME_OFFSET is not None:
                     logging.debug("adjusting timespec by {0}".format(GLOBAL_TIME_OFFSET))
                     latest = latest - GLOBAL_TIME_OFFSET
+                if TIMEZONE:
+                    target_latest = latest.astimezone(TIMEZONE)
+                    logging.debug(f"converted {latest} to {target_latest}")
+                    latest = target_latest
                 latest = latest.strftime('%m/%d/%Y:%H:%M:%S')
 
         if use_index_time is None:
@@ -489,9 +509,13 @@ if __name__ == '__main__':
         help="Kill a running daemon.")
 
     parser.add_argument('--earliest', required=False, default=None, dest='earliest',
-        help="Replace configuration specific earliest time.  Time spec absolute format is MM/DD/YYYY:HH:MM:SS")
+        help="""Replace configuration specific earliest time.  Time spec absolute format is MM/DD/YYYY:HH:MM:SS
+                NOTE: The time specified here will default to the timezone configured for the splunk account.
+                Any timezone settings in the configuration are ignored.""")
     parser.add_argument('--latest', required=False, default=None, dest='latest',
-        help="Replace configuration specific latest time.")
+        help="""Replace configuration specific latest time.  Time spec absolute format is MM/DD/YYYY:HH:MM:SS
+                NOTE: The time specified here will default to the timezone configured for the splunk account.
+                Any timezone settings in the configuration are ignored.""")
     parser.add_argument('-i', '--use-index-time', required=False, default=None, action='store_true', dest='use_index_time',
         help="Use __index time specs instead.")
 
@@ -534,8 +558,6 @@ if __name__ == '__main__':
     # load lib/ onto the python path
     sys.path.append('lib')
 
-    from ace_client_lib.client import Alert
-    import splunklib
 
     if args.kill:
         daemon_path = os.path.join(BASE_DIR, 'var', 'daemon.pid')
@@ -632,6 +654,10 @@ if __name__ == '__main__':
         hours, minutes, seconds = [int(x) for x in CONFIG['global']['global_time_offset'].split(':')]
         GLOBAL_TIME_OFFSET = timedelta(hours=hours, minutes=minutes, seconds=seconds)
         logging.debug("using global time delta {0}".format(GLOBAL_TIME_OFFSET))
+
+    if CONFIG['global']['timezone']:
+        TIMEZONE = pytz.timezone(CONFIG['global']['timezone'])
+        logging.debug(f"using timezone {TIMEZONE}")
 
     if args.daemon:
         DAEMON_MODE = True
