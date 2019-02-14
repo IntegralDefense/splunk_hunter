@@ -16,8 +16,7 @@ import threading
 import time
 import traceback
 
-# TODO pip3 install ace_client_lib
-from ace_client_lib.client import Alert
+from ace_api import Alert
 
 # pip3 install splunklib
 import splunklib
