@@ -16,6 +16,13 @@ import threading
 import time
 import traceback
 
+from ace_api import Alert
+
+# pip3 install splunklib
+import splunklib
+
+# pip3 install pytz
+import pytz
 
 # custom ConfigParser to keep case sensitivity
 class CaseConfigParser(ConfigParser):
@@ -23,14 +30,18 @@ class CaseConfigParser(ConfigParser):
         return optionstr
 
 # global variables
-BASE_DIR = '/opt/splunk_detection'
+BASE_DIR = None
 RULES_DIR = [ ]
 CONFIG = None
 
 # set to True if running in daemon (scheduled) mode
 DAEMON_MODE = False
+
 # the amount of time we adjust for when running in daemon mode
 GLOBAL_TIME_OFFSET = None
+
+# the timezone we convert to when we specify time ranges
+TIMEZONE = None
 
 # utility functions
 
@@ -177,9 +188,11 @@ class SearchDaemon(object):
             self.execution_slots.release()
 
 class SplunkSearch(object):
-    def __init__(self, rules_dir, search_name):
+    def __init__(self, rules_dir, search_name, submit_alert=True, print_alert_details=False):
         self.rules_dir = rules_dir
         self.search_name = search_name
+        self.submit_alert = submit_alert
+        self.print_alert_details = print_alert_details
         self.config_path = os.path.join(self.rules_dir, '{}.ini'.format(search_name))
         self.last_executed_path = os.path.join(BASE_DIR, 'var', '{}.last_executed'.format(search_name))
         self.config = CaseConfigParser()
@@ -287,6 +300,10 @@ class SplunkSearch(object):
                 if GLOBAL_TIME_OFFSET is not None:
                     logging.debug("adjusting timespec by {0}".format(GLOBAL_TIME_OFFSET))
                     earliest = earliest - GLOBAL_TIME_OFFSET
+                if TIMEZONE:
+                    target_earliest = earliest.astimezone(TIMEZONE)
+                    logging.debug(f"converted {earliest} to {target_earliest}")
+                    earliest = target_earliest
                 earliest = earliest.strftime('%m/%d/%Y:%H:%M:%S')
                 logging.debug("using earliest from last execution time {0}".format(earliest))
 
@@ -298,6 +315,10 @@ class SplunkSearch(object):
                 if GLOBAL_TIME_OFFSET is not None:
                     logging.debug("adjusting timespec by {0}".format(GLOBAL_TIME_OFFSET))
                     latest = latest - GLOBAL_TIME_OFFSET
+                if TIMEZONE:
+                    target_latest = latest.astimezone(TIMEZONE)
+                    logging.debug(f"converted {latest} to {target_latest}")
+                    latest = target_latest
                 latest = latest.strftime('%m/%d/%Y:%H:%M:%S')
 
         if use_index_time is None:
@@ -458,7 +479,13 @@ class SplunkSearch(object):
 
             try:
                 logging.info("submitting alert {}".format(alert.description))
-                alert.submit(CONFIG['ace']['uri'], CONFIG['ace']['key'])
+                if self.submit_alert:
+                    alert.submit(CONFIG['ace']['uri'], CONFIG['ace']['key'], ssl_verification=CONFIG['ace']['ca_path'])
+                else:
+                    if self.print_alert_details:
+                        print(str(alert))
+                    else:
+                        print(alert.description)
             except Exception as e:
                 logging.error("unable to submit alert {}: {}".format(alert, str(e)))
                 #report_error("unable to submit alert {}: {}".format(alert, e))
@@ -469,13 +496,13 @@ class SplunkSearch(object):
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description="Splunk Detection")
+    parser = argparse.ArgumentParser(description="Splunk Hunter")
     parser.add_argument('-b', '--base-directory', required=False, default=None, dest='base_dir',
         help="Path to the base directory of the Splunk Detection tool. "
-        "Defaults to /opt/splunk_detection. "
+        "Defaults to current working directory. "
         "Override with SPLUNK_DETECTION environment variable.")
-    parser.add_argument('-c', '--config', required=False, default='etc/splunk_detection.ini', dest='config_path',
-        help="Path to configuration file.  Defaults to etc/splunk_detection.ini")
+    parser.add_argument('-c', '--config', required=False, default='etc/config.ini', dest='config_path',
+        help="Path to configuration file.  Defaults to etc/config.ini")
     parser.add_argument('--logging-config', required=False, default='etc/logging.ini', dest='logging_config',
         help="Path to logging configuration file.  Defaults to etc/logging.ini")
     parser.add_argument('-r', '--rules-dir', required=False, dest='rules_dir', action='append', default=[],
@@ -489,11 +516,21 @@ if __name__ == '__main__':
         help="Kill a running daemon.")
 
     parser.add_argument('--earliest', required=False, default=None, dest='earliest',
-        help="Replace configuration specific earliest time.  Time spec absolute format is MM/DD/YYYY:HH:MM:SS")
+        help="""Replace configuration specific earliest time.  Time spec absolute format is MM/DD/YYYY:HH:MM:SS
+                NOTE: The time specified here will default to the timezone configured for the splunk account.
+                Any timezone settings in the configuration are ignored.""")
     parser.add_argument('--latest', required=False, default=None, dest='latest',
-        help="Replace configuration specific latest time.")
+        help="""Replace configuration specific latest time.  Time spec absolute format is MM/DD/YYYY:HH:MM:SS
+                NOTE: The time specified here will default to the timezone configured for the splunk account.
+                Any timezone settings in the configuration are ignored.""")
     parser.add_argument('-i', '--use-index-time', required=False, default=None, action='store_true', dest='use_index_time',
         help="Use __index time specs instead.")
+    parser.add_argument('--exact-name', default=False, action='store_true', dest='exact_name',
+        help="Match the exact name of the rule instead of a partial match.")
+    parser.add_argument('-p', '--print-alerts', default=False, action='store_true', dest='print_alerts',
+        help="Print the alerts that would be generated instead of sending them to ACE.")
+    parser.add_argument('--print-alert-details', default=False, action='store_true', dest='print_alert_details',
+        help="Valid only with the -p option -- prints the details of the generated alerts instead of just the description.")
 
     parser.add_argument("searches", nargs=argparse.REMAINDER, help="One or more searches to execute.")
 
@@ -505,6 +542,8 @@ if __name__ == '__main__':
         BASE_DIR = os.environ['SPLUNK_DETECTION']
     if args.base_dir:
         BASE_DIR = args.base_dir
+    if not BASE_DIR:
+        BASE_DIR = os.getcwd()
 
     try:
         os.chdir(BASE_DIR)
@@ -532,8 +571,6 @@ if __name__ == '__main__':
     # load lib/ onto the python path
     sys.path.append('lib')
 
-    from saq.client import Alert
-    import splunklib
 
     if args.kill:
         daemon_path = os.path.join(BASE_DIR, 'var', 'daemon.pid')
@@ -631,6 +668,10 @@ if __name__ == '__main__':
         GLOBAL_TIME_OFFSET = timedelta(hours=hours, minutes=minutes, seconds=seconds)
         logging.debug("using global time delta {0}".format(GLOBAL_TIME_OFFSET))
 
+    if CONFIG['global']['timezone']:
+        TIMEZONE = pytz.timezone(CONFIG['global']['timezone'])
+        logging.debug(f"using timezone {TIMEZONE}")
+
     if args.daemon:
         DAEMON_MODE = True
         daemon = SearchDaemon()
@@ -654,9 +695,18 @@ if __name__ == '__main__':
     try:
         for search_name in args.searches:
             for rules_dir in RULES_DIR:
-                for search_result in glob.glob('{0}/*{1}*.ini'.format(rules_dir, search_name)):
+                glob_pattern = '{}/*.ini'.format(rules_dir)
+                if not args.exact_name:
+                    glob_pattern = '{}/*{}*.ini'.format(rules_dir, search_name)
+
+                for search_result in glob.glob(glob_pattern):
+                    if args.exact_name:
+                        if search_name != os.path.basename(search_result)[:-4]:
+                            continue
+
                     search_name, _ = os.path.splitext(os.path.basename(search_result))
-                    search_object = SplunkSearch(rules_dir, search_name)
+                    search_object = SplunkSearch(rules_dir, search_name, submit_alert=not args.print_alerts, print_alert_details=args.print_alert_details)
                     search_object.execute(earliest=args.earliest, latest=args.latest, use_index_time=args.use_index_time)
+
     except KeyboardInterrupt:
         pass

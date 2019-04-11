@@ -102,3 +102,10 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+rules/
+rules.*/
+etc/logging.ini
+etc/config.ini
+logs/
+rules
