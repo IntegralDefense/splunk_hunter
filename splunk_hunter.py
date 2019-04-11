@@ -188,9 +188,11 @@ class SearchDaemon(object):
             self.execution_slots.release()
 
 class SplunkSearch(object):
-    def __init__(self, rules_dir, search_name):
+    def __init__(self, rules_dir, search_name, submit_alert=True, print_alert_details=False):
         self.rules_dir = rules_dir
         self.search_name = search_name
+        self.submit_alert = submit_alert
+        self.print_alert_details = print_alert_details
         self.config_path = os.path.join(self.rules_dir, '{}.ini'.format(search_name))
         self.last_executed_path = os.path.join(BASE_DIR, 'var', '{}.last_executed'.format(search_name))
         self.config = CaseConfigParser()
@@ -477,7 +479,13 @@ class SplunkSearch(object):
 
             try:
                 logging.info("submitting alert {}".format(alert.description))
-                alert.submit(CONFIG['ace']['uri'], CONFIG['ace']['key'])
+                if self.submit_alert:
+                    alert.submit(CONFIG['ace']['uri'], CONFIG['ace']['key'], ssl_verification=CONFIG['ace']['ca_path'])
+                else:
+                    if self.print_alert_details:
+                        print(str(alert))
+                    else:
+                        print(alert.description)
             except Exception as e:
                 logging.error("unable to submit alert {}: {}".format(alert, str(e)))
                 #report_error("unable to submit alert {}: {}".format(alert, e))
@@ -517,6 +525,12 @@ if __name__ == '__main__':
                 Any timezone settings in the configuration are ignored.""")
     parser.add_argument('-i', '--use-index-time', required=False, default=None, action='store_true', dest='use_index_time',
         help="Use __index time specs instead.")
+    parser.add_argument('--exact-name', default=False, action='store_true', dest='exact_name',
+        help="Match the exact name of the rule instead of a partial match.")
+    parser.add_argument('-p', '--print-alerts', default=False, action='store_true', dest='print_alerts',
+        help="Print the alerts that would be generated instead of sending them to ACE.")
+    parser.add_argument('--print-alert-details', default=False, action='store_true', dest='print_alert_details',
+        help="Valid only with the -p option -- prints the details of the generated alerts instead of just the description.")
 
     parser.add_argument("searches", nargs=argparse.REMAINDER, help="One or more searches to execute.")
 
@@ -681,9 +695,18 @@ if __name__ == '__main__':
     try:
         for search_name in args.searches:
             for rules_dir in RULES_DIR:
-                for search_result in glob.glob('{0}/*{1}*.ini'.format(rules_dir, search_name)):
+                glob_pattern = '{}/*.ini'.format(rules_dir)
+                if not args.exact_name:
+                    glob_pattern = '{}/*{}*.ini'.format(rules_dir, search_name)
+
+                for search_result in glob.glob(glob_pattern):
+                    if args.exact_name:
+                        if search_name != os.path.basename(search_result)[:-4]:
+                            continue
+
                     search_name, _ = os.path.splitext(os.path.basename(search_result))
-                    search_object = SplunkSearch(rules_dir, search_name)
+                    search_object = SplunkSearch(rules_dir, search_name, submit_alert=not args.print_alerts, print_alert_details=args.print_alert_details)
                     search_object.execute(earliest=args.earliest, latest=args.latest, use_index_time=args.use_index_time)
+
     except KeyboardInterrupt:
         pass
