@@ -356,7 +356,8 @@ class SplunkSearch(object):
                     sys.exit(1)
 
                 with open(include_path, 'r') as fp:
-                    search_text = search_text.replace(m.group(0), fp.read().strip())
+                    included_text = re.sub(r'^\s*#.*$', '', fp.read().strip(), count=0, flags=re.MULTILINE)
+                    search_text = search_text.replace(m.group(0), included_text)
 
             # put it all on one line for splunk
             # we don't *need* to do this except for keeping the logs clean
@@ -487,10 +488,10 @@ class SplunkSearch(object):
                     else:
                         print(alert.description)
             except Exception as e:
-                logging.error("unable to submit alert {}: {}".format(alert, str(e)))
+                logging.error("unable to submit alert {}: {}".format(alert.description, str(e)))
                 #report_error("unable to submit alert {}: {}".format(alert, e))
 
-            logging.debug(str(alert))
+            #logging.debug(str(alert))
 
         return search_result
 
