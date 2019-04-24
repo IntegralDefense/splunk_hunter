@@ -488,10 +488,10 @@ class SplunkSearch(object):
                     else:
                         print(alert.description)
             except Exception as e:
-                logging.error("unable to submit alert {}: {}".format(alert, str(e)))
+                logging.error("unable to submit alert {}: {}".format(alert.description, str(e)))
                 #report_error("unable to submit alert {}: {}".format(alert, e))
 
-            logging.debug(str(alert))
+            #logging.debug(str(alert))
 
         return search_result
 
