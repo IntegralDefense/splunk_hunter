@@ -356,7 +356,8 @@ class SplunkSearch(object):
                     sys.exit(1)
 
                 with open(include_path, 'r') as fp:
-                    search_text = search_text.replace(m.group(0), fp.read().strip())
+                    included_text = re.sub(r'^\s*#.*$', '', fp.read().strip(), count=0, flags=re.MULTILINE)
+                    search_text = search_text.replace(m.group(0), included_text)
 
             # put it all on one line for splunk
             # we don't *need* to do this except for keeping the logs clean
